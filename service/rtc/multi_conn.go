@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/ipv4"
 )
 
 const (
@@ -17,7 +19,9 @@ const (
 )
 
 type multiConn struct {
-	conns        []net.PacketConn
+	conns        []*ipv4.PacketConn
+	dstIPs       map[string]*ipv4.ControlMessage
+	dstIPMu      sync.RWMutex
 	addr         net.Addr
 	readResultCh chan readResult
 	closeCh      chan struct{}
@@ -33,7 +37,7 @@ type readResult struct {
 	buf  []byte
 }
 
-func newMultiConn(conns []net.PacketConn) (*multiConn, error) {
+func newMultiConn(conns []*ipv4.PacketConn) (*multiConn, error) {
 	if len(conns) == 0 {
 		return nil, errors.New("conns should not be empty")
 	}
@@ -44,6 +48,7 @@ func newMultiConn(conns []net.PacketConn) (*multiConn, error) {
 	}
 	var mc multiConn
 	mc.conns = conns
+	mc.dstIPs = make(map[string]*ipv4.ControlMessage, len(conns))
 	mc.addr = conns[0].LocalAddr()
 	mc.readResultCh = make(chan readResult)
 	mc.closeCh = make(chan struct{})
@@ -59,12 +64,23 @@ func newMultiConn(conns []net.PacketConn) (*multiConn, error) {
 	return &mc, nil
 }
 
-func (mc *multiConn) reader(conn net.PacketConn) {
+func (mc *multiConn) reader(conn *ipv4.PacketConn) {
 	defer mc.wg.Done()
 	var res readResult
+	var cm *ipv4.ControlMessage
+
 	for {
 		res.buf = mc.bufPool.Get().([]byte)
-		res.n, res.addr, res.err = conn.ReadFrom(res.buf)
+		res.n, cm, res.addr, res.err = conn.ReadFrom(res.buf)
+
+		// Track the destination IP (ourselves) of the incoming packet,
+		// so we can later send a packet originating from that same IP
+		if res.addr != nil && cm != nil {
+			mc.dstIPMu.Lock()
+			mc.dstIPs[res.addr.String()] = &ipv4.ControlMessage{Src: cm.Dst}
+			mc.dstIPMu.Unlock()
+		}
+
 		select {
 		case mc.readResultCh <- res:
 		case <-mc.closeCh:
@@ -88,7 +104,15 @@ func (mc *multiConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 func (mc *multiConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	// Simple round-robin to equally distribute the writes among the connections.
 	idx := (atomic.AddUint64(&mc.counter, 1) - 1) % uint64(len(mc.conns))
-	return mc.conns[idx].WriteTo(p, addr)
+
+	mc.dstIPMu.RLock()
+	cm, ok := mc.dstIPs[addr.String()]
+	mc.dstIPMu.RUnlock()
+	if !ok {
+		cm = &ipv4.ControlMessage{}
+	}
+
+	return mc.conns[idx].WriteTo(p, cm, addr)
 }
 
 func (mc *multiConn) Close() error {

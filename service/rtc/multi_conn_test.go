@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"testing"
 
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
 	"github.com/stretchr/testify/require"
@@ -24,14 +25,14 @@ func TestNewMultiConn(t *testing.T) {
 	})
 
 	t.Run("error - empty conns", func(t *testing.T) {
-		mc, err := newMultiConn([]net.PacketConn{})
+		mc, err := newMultiConn([]*ipv4.PacketConn{})
 		require.Error(t, err)
 		require.Equal(t, "conns should not be empty", err.Error())
 		require.Nil(t, mc)
 	})
 
 	t.Run("error - nil conn", func(t *testing.T) {
-		mc, err := newMultiConn([]net.PacketConn{nil})
+		mc, err := newMultiConn([]*ipv4.PacketConn{nil})
 		require.Error(t, err)
 		require.Equal(t, "invalid nil conn", err.Error())
 		require.Nil(t, mc)
@@ -42,7 +43,7 @@ func TestNewMultiConn(t *testing.T) {
 		conn1, err := listenConfig.ListenPacket(context.Background(), "udp4", ":0")
 		require.NoError(t, err)
 		require.NotNil(t, conn1)
-		mc, err := newMultiConn([]net.PacketConn{conn1})
+		mc, err := newMultiConn([]*ipv4.PacketConn{ipv4.NewPacketConn(conn1)})
 		require.NoError(t, err)
 		require.NotNil(t, mc)
 		err = mc.Close()
@@ -73,7 +74,7 @@ func TestMultiConnReadWrite(t *testing.T) {
 	require.NotNil(t, conn2)
 	require.Equal(t, conn1.LocalAddr(), conn2.LocalAddr())
 
-	mc, err := newMultiConn([]net.PacketConn{conn1, conn2})
+	mc, err := newMultiConn([]*ipv4.PacketConn{ipv4.NewPacketConn(conn1), ipv4.NewPacketConn(conn2)})
 	require.NoError(t, err)
 	require.NotNil(t, mc)
 	defer mc.Close()

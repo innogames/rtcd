@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
 	"github.com/pion/ice/v2"
@@ -94,7 +95,7 @@ func (s *Server) Start() error {
 		s.log.Info("got public IP address", mlog.String("addr", addr))
 	}
 
-	var conns []net.PacketConn
+	var conns []*ipv4.PacketConn
 	for i := 0; i < runtime.NumCPU(); i++ {
 		listenConfig := net.ListenConfig{
 			Control: func(network, address string, c syscall.RawConn) error {
@@ -116,6 +117,12 @@ func (s *Server) Start() error {
 		udpConn, err := listenConfig.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", s.cfg.ICEPortUDP))
 		if err != nil {
 			return fmt.Errorf("failed to listen on udp: %w", err)
+		}
+
+		packetConn := ipv4.NewPacketConn(udpConn)
+		err = packetConn.SetControlMessage(ipv4.FlagDst, true)
+		if err != nil {
+			return fmt.Errorf("failed to set control message: %w", err)
 		}
 
 		s.log.Info(fmt.Sprintf("rtc: server is listening on udp %d", s.cfg.ICEPortUDP))
@@ -155,7 +162,7 @@ func (s *Server) Start() error {
 			return fmt.Errorf("Control call failed: %w", err)
 		}
 
-		conns = append(conns, udpConn)
+		conns = append(conns, packetConn)
 	}
 	var err error
 	s.udpConn, err = newMultiConn(conns)

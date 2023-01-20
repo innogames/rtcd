@@ -19,6 +19,7 @@ require (
 	github.com/stretchr/testify v1.8.1
 	github.com/vmihailenco/msgpack/v5 v5.3.5
 	golang.org/x/crypto v0.2.0
+	golang.org/x/net v0.2.0
 	golang.org/x/sys v0.2.0
 )
 
@@ -55,7 +56,6 @@ require (
 	github.com/wiggin77/merror v1.0.4 // indirect
 	github.com/wiggin77/srslog v1.0.1 // indirect
 	golang.org/x/exp v0.0.0-20200908183739-ae8ad444f925 // indirect
-	golang.org/x/net v0.2.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
